@@ -90,9 +90,10 @@ pytest
 
 ## Working conventions
 
-- `main` is protected: no direct commits, everything goes through a pull request
-  reviewed by the other author
-- One branch per feature: `feat/margrabe`, `feat/heston-mc`, `docs/report`
+## Working conventions
+
+- Two-person project: commits are pushed directly to `main`
+- Always fetch and pull before starting work and before pushing
 - Commit messages prefixed `feat:`, `fix:`, `docs:`, `test:`, `refactor:`
 - Every pricing model ships with unit tests, including a check against a known
   limiting case
