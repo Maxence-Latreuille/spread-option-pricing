@@ -12,7 +12,7 @@ Projet d'Application Recherche (PAr), École Centrale de Lyon — Département S
 
 | | |
 |---|---|
-| **Authors** | Maxence Latreuille, Elliot Béreau |
+| **Authors** | [Maxence Latreuille](https://maxencelatreuille.com), Elliot Béreau |
 | **Supervisor** | Christian de Peretti, Maître de conférences en finance |
 | **Academic year** | 2026–2027 |
 
