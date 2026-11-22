@@ -11,4 +11,4 @@ def bs_call(S0, K, T, r, sigma):
 def bs_delta(S0, K, T, r, sigma):
     """Black-Scholes delta of a European call: number of shares to hold."""
     d1 = (np.log(S0 / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
-    return norm.cdf(d1)
+    return norm.cdf(d1) # delta = N(d1)
