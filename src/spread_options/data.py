@@ -1,70 +1,25 @@
-import yfinance as yf
-import pandas as pd
-import numpy as np
+import warnings
 from datetime import datetime, timedelta
 
+import yfinance as yf
 
+# yfinance still uses an old pandas option (inplace=...): pandas warns, but results are correct
+warnings.filterwarnings("ignore", message="The inplace keyword", module="yfinance")
 
-def data(ticker="BZ=F", start="01/01/2021", T=1):
-    """Retrieve historical closing prices from the first available trading day over a maturity T (in years)."""
+def get_prices(tickers, start, end):
+    """Daily closing prices between two dates (dd/mm/yyyy): a Series for one ticker, a DataFrame for several."""
     start_date = datetime.strptime(start, "%d/%m/%Y")
-    end_date = start_date + timedelta(days=365*T + 15)  
+    end_date = datetime.strptime(end, "%d/%m/%Y") + timedelta(days=1) # yfinance excludes the end day
+    prices = yf.download(tickers, start=start_date, end=end_date, auto_adjust=True, progress=False)["Close"]
+    prices = prices.dropna() # keep only the days where every ticker has a price (needed for a spread)
+    if isinstance(tickers, str):
+        return prices[tickers] # one ticker: a simple Series
+    return prices
 
-    data1 = yf.download(
-        ticker,
-        start=start_date.strftime("%Y-%m-%d"),
-        end=(end_date + timedelta(days=1)).strftime("%Y-%m-%d"),
-        interval="1d",
-        auto_adjust=False,
-        group_by="ticker",
-        progress=False
-    )
-
-    St = data1[ticker]["Close"].dropna()  
-    if St.empty:
-        raise ValueError("Aucune donnée disponible.")
-
-    start_reel = St.index[0]     
-    fin = start_reel + timedelta(days=365*T)     
-    St = St.loc[St.index <= fin]      
-
-    tableau = np.empty((len(St), 2), dtype=object)
-    tableau[:, 0] = St.index.strftime("%d/%m/%Y").tolist()
-    tableau[:, 1] = [round(float(p), 2) for p in St.to_numpy()]
-
-    return tableau
-
-
-
-
-def sigma_histo(ticker="BZ=F", start="01/01/2021"):
-    """Estimate annualized historical volatility from all available closing prices up to the specified date."""
-    start_date = datetime.strptime(start, "%d/%m/%Y")
-
-    data1 = yf.download(
-        ticker,
-        period="max",
-        end=(start_date + timedelta(days=1)).strftime("%Y-%m-%d"),
-        interval="1d",
-        auto_adjust=False,
-        group_by="ticker",
-        progress=False
-    )
-
-    St = data1[ticker]["Close"].dropna()
-    St = St[St > 0]
-
-    if len(St) < 3:
-        raise ValueError("Pas assez de données historiques.")
-
-    returns = np.log(St / St.shift(1)).dropna()
-    sigma = float(returns.std() * np.sqrt(252))
-
-    return sigma
-
-
-
-
-print(data(ticker="BZ=F", start="01/01/2021", T=1))
-print(sigma_histo(ticker="BZ=F", start="01/01/2021"))
-
+if __name__ == "__main__":
+    # quick check, runs only with "python src/spread_options/data.py", never on import
+    spy = get_prices("SPY", "01/01/2023", "31/12/2023")
+    print(spy.head(3))
+    both = get_prices(["HO=F", "CL=F"], "01/01/2023", "31/12/2023")
+    crack = 42 * both["HO=F"] - both["CL=F"] # 42 gallons per barrel
+    print(crack.head(3))
