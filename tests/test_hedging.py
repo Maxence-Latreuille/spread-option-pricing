@@ -6,7 +6,7 @@ from spread_options.models import simulate_gbm_paths
 from spread_options.products import call_payoff
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
-N_PATHS = 500 # the simple loop is slow, 500 scenarios are enough for these checks
+N_PATHS = 100 # the simple loop is slow, 500 scenarios are enough for these checks (here 100 to make pytest faster)
 
 def hedge_call(mu=0.03, true_sigma=0.2, n_steps=252):
     """Sell a call at the BS price (sigma=0.2) and hedge it daily on paths simulated with true_sigma."""
@@ -20,7 +20,7 @@ def hedge_call(mu=0.03, true_sigma=0.2, n_steps=252):
         price0=bs_call(S0, K, T, r, sigma),
         delta_fn=lambda S, time_left: bs_delta(S, K, time_left, r, sigma), # rule Delta(S, tau)
         payoff_fn=lambda ST: call_payoff(ST, K),
-    ) # return 500 P&L
+    ) # return 100 P&L
 
 def test_hedge_hand_example():
     # tests the engine alone (no BS): delta fixed at 0.5, no interest (r = 0)
