@@ -221,3 +221,6 @@ CLAUDE.md
 learning.md
 biblio.bib
 rapport.tex
+
+# Personal course notebooks (kept local)
+notebooks/cours_*.ipynb
