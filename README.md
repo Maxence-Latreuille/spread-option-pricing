@@ -1,12 +1,13 @@
 # Spread Option Pricing
 
-Pricing and risk management of options written on the price spread between two
+Pricing and hedging of options written on the price spread between two
 assets, with an application to energy markets (Brent, WTI, heating oil).
 
 **Status:** the single-asset foundation (Black–Scholes call, delta hedging,
-volatility estimation, real-data backtest on Brent) is done. The spread-option
-models are being implemented one by one, from the simplest to the most complex
-(see the [roadmap](#roadmap-spread-option-models)).
+volatility estimation, real-data backtest on Brent) is done. The spread part has
+started: the bivariate GBM and its Monte Carlo price, which is the reference for
+everything that follows, are implemented and tested. Next: Margrabe's formula
+(see the [roadmap](#roadmap)).
 
 ## Context
 
@@ -23,9 +24,10 @@ Projet d'Application Recherche (PAr), École Centrale de Lyon, Département SHLS
 
 - [x] Delta-hedge a Black–Scholes call, in simulation and on real Brent data (foundation)
 - [x] Estimate volatility from market data (historical, EWMA) and measure what the error costs
-- [ ] Price a spread option with many models and **compare them** (price error, computation time, hedging quality)
+- [x] Simulate two correlated prices (bivariate GBM) and price a spread call by Monte Carlo
+- [ ] Compare fast pricing methods against Monte Carlo (price error, computation time, hedging quality)
+- [ ] Estimate the correlation ρ from data and hedge a real spread trade
 - [ ] Price under stochastic volatility (Heston) and with jumps
-- [ ] Derive and compute the replicating portfolio and the Greeks of a spread option
 - [ ] Study implied volatility / implied correlation across strike and maturity
 - [ ] *(optional)* Price with a multilayer perceptron and benchmark it against the
       analytical and Monte Carlo methods (pricing error, computation time)
@@ -36,29 +38,72 @@ The payoff of a spread call at maturity is
 
     max(S1_T - S2_T - K, 0)
 
-Two regimes have to be distinguished, and the distinction drives the whole project.
-
 **K = 0.** A closed-form solution exists: the Margrabe (1978) exchange option
 formula, built on the volatility of the ratio S1/S2:
 
     sigma_hat = sqrt(sigma1^2 + sigma2^2 - 2 * rho * sigma1 * sigma2)
 
-Its value is independent of the risk-free rate: taking asset 2 as numeraire turns
+Its value does not depend on the risk-free rate: taking asset 2 as numeraire turns
 the problem into a standard call on the ratio S1/S2.
 
-**K != 0.** No closed form exists, even under Black–Scholes, because the difference
-of two lognormal variables is not lognormal. This is why so many approximations
-exist, and why the project compares them against a Monte Carlo reference.
+**K != 0.** No closed form exists, even under Black–Scholes. The difference of two
+lognormal prices is not lognormal: it can be negative, and its volatility depends on
+S1 and S2 separately, not only on their difference. Plugging a "spread volatility"
+into the Black–Scholes formula gives a wrong price (4.88 $ against 8.95 $ by Monte
+Carlo in our base case). This is why so many approximations exist, and why the
+project compares them against a Monte Carlo reference.
 
-## What has been done: the single-asset foundation
+## Two kinds of choices: models and methods
 
-Before moving to two assets, the whole pricing and hedging chain was built and
-tested on a single call on Brent (`BZ=F`):
+Pricing an option needs two separate choices, and the roadmap is organised around them.
+
+| | **Model** | **Pricing method** |
+|---|---|---|
+| Question | How do prices move? | Given the model, how do we compute the price? |
+| Examples | bivariate GBM, Bachelier, Heston, Merton jumps, SABR | Monte Carlo, exact formula (Margrabe), approximations (Kirk, Li–Deng–Zhou, Carmona–Durrleman), Fourier, neural network |
+| What it decides | **which** price is the right one | **how fast and how precisely** we get it |
+| How it is judged | realism, on real market data | speed and error against Monte Carlo, in simulation |
+
+The premium **and** the hedge ratios (deltas) both come from the pair
+model + method: the delta is the sensitivity of the price to each underlying.
+A wrong method gives a slow or inaccurate number; a wrong model gives an accurate
+number for the wrong question.
+
+The working plan is to **keep the bivariate GBM**, replace Monte Carlo by a fast
+formula so that daily hedging is practical, and change the model only if the
+real-data tests show that the GBM is the problem.
+
+## How each question is answered: simulation or real data
+
+| Question | Where it is answered | Why |
+|---|---|---|
+| Does a method compute the model's price? | simulation only | the right answer is known (Monte Carlo reference); on market data the errors mix |
+| Does the hedge work when the model is true? (mean P&L ≈ 0, spread shrinking as 1/√n) | simulation (notebook 01) | same reason |
+| Can σ1, σ2 and ρ be estimated before the trade? | real data (notebook 02) | compare the estimate with the value realised over the next year |
+| Is the model realistic? | real data (notebook 03) | hedging P&L on real paths, then the same P&L recomputed with the realised parameters: if this "hindsight" P&L is close to 0, the model is fine and the error comes from the parameters |
+| Do our prices match quoted spread-option prices? | not feasible | no free data on spread-option quotes. The call study did not use option quotes either: everything is judged through hedging P&L on real price paths |
+
+The correlation ρ is not observed but it can be **estimated** from free daily
+prices, exactly like σ. Correlation of daily returns, 2012–2024:
+
+| | 2013 | 2015 | 2017 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---|---|---|---|---|---|---|---|---|
+| Brent / WTI | 0.70 | 0.86 | 0.93 | 0.92 | 0.46 | 0.97 | 0.94 | 0.97 | 0.96 |
+| Heating oil / WTI | 0.67 | 0.72 | 0.85 | 0.91 | 0.40 | 0.95 | 0.61 | 0.71 | 0.85 |
+
+Using last year's ρ for the next year gives a mean absolute error of 0.12 on
+Brent / WTI (0.05 without 2020 and 2021) and 0.18 on heating oil / WTI. Since an
+error of 0.04 on ρ moves the spread-call price by about 18 %, estimating ρ is
+expected to be the main difficulty on real data.
+
+## What has been done
+
+### Single-asset foundation
+
+The whole pricing and hedging chain was first built and tested on a single call on
+Brent (`BZ=F`):
 
     estimate sigma  ->  premium (Black–Scholes)  ->  daily delta hedge  ->  P&L
-
-Each idea is checked twice: first in simulation, where the model is true by
-construction and the answer is known, then on real market data.
 
 | Notebook | Question | Main results |
 |---|---|---|
@@ -71,57 +116,86 @@ like a stock (Black–Scholes, r = 3 %); the final model should use the Black-76
 versions of each formula (Black–Scholes overprices the 2023 at-the-money call by
 about 12 %).
 
-## Roadmap: spread option models
+### Spread: the Monte Carlo reference
 
-The goal is to implement **many pricing models for the spread call and compare
-them**, from the simplest / least accurate to the most complex, as far as time
-allows. Each model comes with its formula worked out on a small numerical example,
-a library function, one unit test against a known limiting case, and a comparison
-against the Monte Carlo reference.
+Two correlated GBMs are built from independent shocks with
+`Z2 = rho * Z1 + sqrt(1 - rho^2) * Z'`, which keeps a unit variance and gives a
+correlation ρ. Base case: Brent 80 $, WTI 75 $, σ1 = 30 %, σ2 = 35 %, ρ = 0.6,
+K = 5 $, r = 3 %, one year.
 
-| # | Model | Idea | Accuracy / limits | Reference check | Status |
+| Check | Result |
+|---|---|
+| Simulated correlation / volatilities | 0.5998 / 29.99 % / 35.00 % |
+| Monte Carlo price (100 000 paths) | 8.95 $ ± 0.04 |
+| Effect of ρ (0 / 0.6 / 0.9) | 14.01 / 8.95 / 4.61 $: the higher ρ, the calmer the spread, the cheaper the option |
+| Unit test: S2 = 0 gives back Black–Scholes | 9.34 $ vs 9.41 $, within 3 standard errors |
+| Computation time | 5.8 ms per price, 66 times slower than the Black–Scholes formula |
+
+Known limits of this reference: each leg stays positive, so a negative price such
+as WTI at −37.63 $ on 20 April 2020 cannot occur; Monte Carlo is too slow and too
+noisy for daily deltas (about 49 minutes for a 1 000-path hedging simulation);
+the price is only exact if the GBM assumptions (constant σ1, σ2, ρ, no jumps) hold.
+
+## Roadmap
+
+Each step comes with its formula worked out on a small numerical example, a library
+function, one unit test against a known case, and a notebook analysis.
+
+**Phase A: model = bivariate GBM, reference method**
+
+| # | Step | Status |
+|---|---|---|
+| A0 | Bivariate GBM + Monte Carlo, the reference for every other method | done |
+
+**Phase B: fast methods under the same GBM model** (judged in simulation: price error
+against Monte Carlo across K, ρ, σ1, σ2, T; computation time; hedging P&L with their deltas)
+
+| # | Method | Idea | Accuracy / limits | Reference check | Status |
 |---|---|---|---|---|---|
-| 0 | **Bivariate GBM + Monte Carlo** | simulate two correlated prices (ρ) and average the discounted payoff | exact under GBM but slow and noisy; **reference** for all other models | simulated correlation ≈ ρ; σ2 = 0 → Black–Scholes | next |
-| 1 | **Bachelier** | the spread itself follows an arithmetic Brownian motion | simplest; handles negative spreads; ignores the lognormal legs | vs Monte Carlo | planned |
-| 2 | **Margrabe (1978)** | exchange option, K = 0 | exact, but only for K = 0 | Monte Carlo ≈ Margrabe | planned |
-| 3 | **Kirk (1995)** | treat S2 + K as lognormal, Black-type formula | energy market standard; degrades for large K or ρ close to 1 | K = 0 → Margrabe | planned |
-| 4 | **Modified Kirk (Bjerksund–Stensland)** | correction of Kirk's formula | more accurate, still closed form | vs Monte Carlo | planned |
-| 5 | **Li–Deng–Zhou (2008)** | second-order closed-form approximation | very accurate under GBM, heavier formula | vs Monte Carlo | planned |
-| 6 | **Carmona–Durrleman (2003)** | optimised lower bound | very accurate, needs a numerical optimisation | vs Monte Carlo | planned |
-| 7 | **Fourier / FFT (Hurd–Zhou 2010)** | price through a Fourier transform | near-exact and fast under GBM, harder mathematics | vs Monte Carlo | optional |
-| 8 | **Bivariate Heston (Monte Carlo)** | stochastic volatility on each leg | captures volatility that changes during the year | vol of vol = 0 → GBM | planned |
-| 9 | **Bivariate Merton jump-diffusion** | adds jumps to both prices | captures shocks such as 2020 and 2022; harder to calibrate | jump intensity = 0 → GBM | planned |
-| 10 | **SABR** | stochastic volatility, market-standard smile model | if time allows | — | optional |
-| 11 | **Neural network (MLP)** | learn the price from (S1, S2, K, σ1, σ2, ρ, T) | compare error and computation time with the formulas | vs Monte Carlo / Kirk on a test set | optional |
+| B1 | **Margrabe (1978)** | exchange option, K = 0 | exact with exact deltas, but only for K = 0; first spread hedged in simulation | Monte Carlo ≈ Margrabe | next |
+| B2 | **Kirk (1995)** | treat S2 + K as lognormal, Black-type formula | energy market standard; degrades for large K or ρ close to 1 | K = 0 gives Margrabe | planned |
+| B3 | Modified Kirk (Bjerksund–Stensland) | correction of Kirk's formula | more accurate, still closed form | vs Monte Carlo | planned |
+| B4 | Li–Deng–Zhou (2008) | second-order closed-form approximation | very accurate, heavier formula | vs Monte Carlo | planned |
+| B5 | Carmona–Durrleman (2003) | optimised lower bound | very accurate, needs a numerical optimisation | vs Monte Carlo | planned |
+| B6 | Fourier (Hurd–Zhou 2010) | price through a Fourier transform | near-exact and fast; most useful later under Heston | vs Monte Carlo | optional |
+| B7 | Neural network (MLP) | learn the price from (S1, S2, K, σ1, σ2, ρ, T) | compare error and computation time with the formulas | vs Monte Carlo / Kirk on a test set | optional |
 
-Comparison criteria: pricing error against Monte Carlo (across K, ρ, σ1, σ2, T),
-computation time, quality of the deltas (hedging P&L in simulation), then real
-spread trades with σ1, σ2 and ρ estimated from data. Each of the three notebooks
-will get a spread part: hedging in simulation (two deltas), estimation of ρ, and a
-real-data backtest. The spread itself (US crack spread `42 × HO − WTI` or
-`Brent − WTI`) is still to be chosen.
+**Phase C: real data, still with the GBM** (the spread, crack `42 × HO − WTI` or
+`Brent − WTI`, is chosen before this phase)
 
-## A note on implied volatility
+| # | Step | Notebook |
+|---|---|---|
+| C1 | Estimate σ1, σ2 and ρ (historical, EWMA), estimate vs realised | 02, spread part |
+| C2 | Real spread trade hedged with the best method of phase B; real P&L and hindsight P&L | 03, spread part |
 
-The implied volatility of a spread option is not well defined: the price depends on
-three diffusion parameters (sigma1, sigma2, rho) and a single market quote cannot
-pin down three unknowns. Two coherent readings are used in this project:
+**Phase D: other models**, used where phase C shows a model error (Heston is part
+of the project brief in any case). Each one is checked in simulation, then on real data.
 
-1. **Implied correlation**: fix sigma1 and sigma2 at the implied volatilities
-   quoted on each underlying and invert for rho. This is the market convention in
-   energy.
-2. **Implied spread volatility**: invert Margrabe for sigma_hat, aggregating the
-   three parameters into one, which allows a strike x maturity surface comparable
-   to a vanilla one.
+| # | Model | What it fixes | Pricing method | Reference check |
+|---|---|---|---|---|
+| D1 | **Bachelier** (normal spread) | negative spreads and prices (WTI in 2020) | closed form | vs Monte Carlo on a normal spread |
+| D2 | Bivariate Heston | volatility that changes during the year | Monte Carlo on paths, then Fourier | vol of vol = 0 gives the GBM |
+| D3 | Bivariate Merton jump-diffusion | shocks such as 2020 and 2022 | Monte Carlo | jump intensity = 0 gives the GBM |
+| D4 | SABR | stochastic volatility, smile model | | optional |
 
-The price is monotonically decreasing in rho, which makes the inversion stable.
+**Phase E: implied volatility and correlation.** The implied volatility of a spread
+option is not well defined: the price depends on three parameters (σ1, σ2, ρ) and a
+single quote cannot pin down three unknowns. Two readings are possible:
+
+1. **Implied correlation**: fix σ1 and σ2 at the implied volatilities quoted on each
+   underlying and invert for ρ (the market convention in energy). The price
+   decreases with ρ, so the inversion is stable.
+2. **Implied spread volatility**: invert Margrabe for sigma_hat, which allows a
+   strike × maturity surface comparable to a vanilla one.
+
+Without free spread-option quotes, this phase can only demonstrate the method.
 
 ## Repository structure
 
     src/spread_options/   Core library
-        products.py       payoffs (call, put; spread call next)
-        models.py         GBM terminal prices and paths
-        monte_carlo.py    Monte Carlo pricing, returns (price, standard error)
+        products.py       payoffs (call, put, spread call)
+        models.py         GBM terminal prices and paths, bivariate GBM paths
+        monte_carlo.py    Monte Carlo pricing (call, put, spread call), returns (price, standard error)
         analytics.py      closed forms (Black–Scholes price and delta)
         hedging.py        delta-hedging P&L along one or many paths
         volatility.py     volatility estimators (historical, EWMA)
@@ -148,8 +222,7 @@ pytest
 - Two-person project: commits are pushed directly to `main`
 - Always fetch and pull before starting work and before pushing
 - Commit messages prefixed `feat:`, `fix:`, `docs:`, `test:`, `refactor:`
-- Every pricing model ships with unit tests, including a check against a known
-  limiting case
+- Every pricing method ships with a unit test against a known case
 - Library code stays in `src/`; notebooks only import functions
 
 ## References
@@ -178,9 +251,9 @@ pytest
 - Bjerksund, P. & Stensland, G. (2014). *Closed Form Spread Option Valuation.*
   Quantitative Finance, 14(10), 1785–1794.
 - J.P. Morgan / Reuters (1996). *RiskMetrics Technical Document* (EWMA volatility).
-- Hull, J. C. *Options, Futures and Other Derivatives*, 11th ed. — ch. 26.6, 27.2,
+- Hull, J. C. *Options, Futures and Other Derivatives*, 11th ed., ch. 26.6, 27.2,
   27.7, 28.4–28.5.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
