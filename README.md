@@ -69,10 +69,9 @@ The price is monotonically decreasing in rho, which makes the inversion stable.
 
 ## Repository structure
 
-    src/spread_options/   Core library: models, Greeks, calibration
+    src/spread_options/   Core library: payoffs, models, Monte Carlo, closed forms, hedging, data
+    tests/                Unit tests (pytest)
     notebooks/            Exploratory analysis and figures for the report
-    tests/                Unit tests
-    data/                 Market data (not versioned)
     docs/                 Report, bibliography, working notes
 
 ## Getting started
@@ -84,11 +83,10 @@ cd spread-option-pricing
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e .               # makes `import spread_options` work everywhere
 
 pytest
 ```
-
-## Working conventions
 
 ## Working conventions
 
