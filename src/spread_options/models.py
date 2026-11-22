@@ -32,3 +32,15 @@ def simulate_gbm_paths(S0, mu, sigma, obs_times, n_paths=100_000, seed=23):
     rng = np.random.default_rng(seed)
     Z = rng.standard_normal((n_paths, len(obs_times))) # one shock per scenario and per date
     return gbm_paths_from_shocks(S0, mu, sigma, obs_times, Z)
+
+def simulate_bivariate_gbm_paths(S1_0, S2_0, mu, sigma1, sigma2, rho, obs_times, n_paths=100_000, seed=23):
+    """Simulate two correlated GBM paths (same drift mu): returns (S1, S2), one row per scenario."""
+    rng = np.random.default_rng(seed)
+    shape = (n_paths, len(obs_times))
+    Z1 = rng.standard_normal(shape) # shocks of asset 1
+    Z_indep = rng.standard_normal(shape) # shocks independent of Z1
+    # mix: keeps variance 1 (rho^2 + 1 - rho^2) and gives corr(Z1, Z2) = rho
+    Z2 = rho * Z1 + np.sqrt(1 - rho**2) * Z_indep
+    S1 = gbm_paths_from_shocks(S1_0, mu, sigma1, obs_times, Z1) # each leg is the usual GBM
+    S2 = gbm_paths_from_shocks(S2_0, mu, sigma2, obs_times, Z2)
+    return S1, S2
