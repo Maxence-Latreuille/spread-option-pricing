@@ -149,10 +149,12 @@ The hedge rebalances both positions along each simulated path and compares the f
 | Monte Carlo spread-call pricing | Done |
 | Margrabe price and analytical deltas ($K=0$) | Done |
 | Two-asset simulated delta hedging | Done |
-| Unified multi-method benchmark | In progress |
-| Monte Carlo deltas for nonzero-strike spreads | Planned |
+| Unified multi-method benchmark (notebook 04) | Done for Monte Carlo and Margrabe; new methods plug into its registry |
+| Monte Carlo pathwise deltas (`mc_spread_deltas`) | Done, tested against Margrabe at $K=0$ |
+| Monte Carlo with Margrabe control variate | Prototyped in notebook 04, to move to `monte_carlo.py` |
+| Brent–WTI correlation estimation | Done (notebook 02) |
 | Kirk and other fast approximations | Planned |
-| Historical two-asset spread hedge | Planned |
+| Historical two-asset spread hedge | First version: exchange option ($K=0$), notebook 03 |
 | Stochastic volatility, jumps, and further models | Planned |
 | Market-implied volatility/correlation calibration | Planned |
 
@@ -165,20 +167,25 @@ Base case: $S_{1,0}=\$80$, $S_{2,0}=\$75$, $\sigma_1=30\%$, $\sigma_2=35\%$, $\r
 | Monte Carlo spread call, $K=\$5$ | \$8.95, standard error \$0.04 (100,000 paths) |
 | Margrabe exchange option, $K=0$ | \$11.78 |
 | Margrabe delta hedge at inception | $\Delta_1\approx+0.643$, $\Delta_2\approx-0.529$ |
-| Margrabe daily hedge, 100 simulated paths | mean terminal P&L +\$0.03, standard deviation \$0.52 |
+| Margrabe daily hedge, 500 simulated paths | mean terminal P&L −\$0.02, standard deviation \$0.52 (4.4 % of the premium) |
+| Monte Carlo with Margrabe control variate, $K=\$5$ | standard error divided by 8 at the same cost (notebook 04) |
+| Brent–WTI exchange option, 10 yearly backtests | mean absolute P&L \$1.43 with previous-year parameters, \$0.19 with realized ones (notebook 03) |
 
 These are simulation results under stated assumptions, not market quotes. Runtimes depend on the machine and the code, and hedging statistics from a small sample are rough.
 
 ## Notebooks
 
-| Notebook | Main question | Scope |
-|---|---|---|
-| [01 Hedging simulation](notebooks/01_hedging_simulation.ipynb) | Does delta hedging behave as expected when model assumptions hold? | Simulated single-asset call; hedging frequency, replication error, parameter sensitivity |
-| [02 Volatility estimation](notebooks/02_volatility_estimation.ipynb) | How accurately can volatility be estimated from past data? | Historical and EWMA estimators |
-| [03 Hedging on real data](notebooks/03_hedging_real_data.ipynb) | How does hedging behave on historical Brent prices? | Historical single-asset experiments and hindsight diagnostics |
-| 04 Methods comparison *(planned)* | Which pricing methods best trade off accuracy, runtime, and risk? | Shared benchmark for spread pricing, Greeks, and hedging |
+Each notebook answers one question and follows the same layout: question, banking motivation, experiment, results, interpretation, desk takeaway, key takeaways. Methods are never given a notebook of their own: they are rows in the shared tables of notebook 04.
 
-The single-asset notebooks set up the method before moving to spreads. Simulation under a known model and backtests on historical prices answer different questions, so both are kept.
+| Notebook | Main question | Validation | Content |
+|---|---|---|---|
+| [00 Project overview](notebooks/00_project_overview.ipynb) | What does a bank compute when it sells a spread option, and why? | none (map) | life cycle of a trade, five activities, model vs method vs parameters, four uses of simulation |
+| [01 Delta hedging](notebooks/01_hedging_simulation.ipynb) | How does a delta hedge work, and why is it never exact? | numerical | cash flows vs market value, one path day by day, theta/gamma, rebalancing frequency, wrong volatility, trading costs |
+| [02 Parameter estimation](notebooks/02_volatility_estimation.ipynb) | How do we choose $\sigma$ and $\rho$ without knowing the future? | empirical | data conventions, historical vs EWMA (three $\lambda$), Brent–WTI correlation, one summary table |
+| [03 Historical hedging](notebooks/03_hedging_real_data.ipynb) | What happens when the hedge is replayed on real prices? | empirical | Brent call backtests, error analysis, hindsight diagnostics, first Brent–WTI exchange-option backtest |
+| [04 Methods benchmark](notebooks/04_methods_comparison.ipynb) | Which method gives accurate prices and deltas fast enough? | numerical | 36-point grid, delta estimators (bias vs noise), timings and workloads, hedging error decomposition, decision table, neural-network protocol |
+
+Simulation under a known model (01, 04) validates methods; historical data (02, 03) test parameters and models. The two are never mixed in one experiment.
 
 ## Roadmap
 
@@ -189,8 +196,9 @@ Every model and method is compared on the same metrics, in shared tables; none g
 - [x] Build correlated two-asset GBM paths and Monte Carlo spread pricing.
 - [x] Implement Margrabe pricing and deltas for $K=0$.
 - [x] Implement a reusable two-asset hedging engine.
-- [ ] Publish the unified comparison notebook.
-- [ ] Implement and validate Monte Carlo delta estimators for $K\neq0$.
+- [x] Publish the unified comparison notebook.
+- [x] Pathwise Monte Carlo deltas in the library (`mc_spread_deltas`), with a test.
+- [ ] Move the control-variate Monte Carlo (validated in notebook 04) into the library, with a test.
 
 ### Phase B: pricing methods under correlated GBM
 
@@ -203,7 +211,8 @@ Every model and method is compared on the same metrics, in shared tables; none g
 
 ### Phase C: parameter estimation and spread hedging on real data
 
-- [ ] Estimate and forecast $\sigma_1$, $\sigma_2$, and $\rho$ from aligned historical prices.
+- [x] Estimate and forecast $\sigma_1$, $\sigma_2$, and $\rho$ from aligned historical prices.
+- [ ] Estimate the ratio volatility $\hat\sigma$ directly from $\ln(S_1/S_2)$ (suggested by the exchange-option backtest).
 - [ ] Select and document a consistent spread contract convention (e.g., Brent–WTI).
 - [ ] Backtest two-asset hedges using only information available at each decision date.
 - [ ] Explore costs, financing assumptions, and out-of-sample robustness.
@@ -237,9 +246,11 @@ spread-option-pricing/
 │   ├── volatility.py      # Historical and EWMA estimators
 │   └── data.py            # Market-data utilities
 ├── notebooks/
+│   ├── 00_project_overview.ipynb
 │   ├── 01_hedging_simulation.ipynb
 │   ├── 02_volatility_estimation.ipynb
-│   └── 03_hedging_real_data.ipynb
+│   ├── 03_hedging_real_data.ipynb
+│   └── 04_methods_comparison.ipynb
 ├── tests/                 # Pytest tests
 ├── spread_data.csv        # Research data
 ├── pyproject.toml
