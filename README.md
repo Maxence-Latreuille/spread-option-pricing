@@ -20,6 +20,9 @@ A spread option depends on two price processes, their volatilities and their cor
 
 **Research question:** *How should pricing accuracy, computational efficiency, and hedging risk be balanced when selecting a model and valuation method for energy spread options?*
 
+In practice: Monte Carlo prices and hedges any spread option, but one evening (price and two deltas) takes about 13 ms. That is fine for one backtest (2013–2024: about 40 s) and too slow when repeated (20 settings: about 13 min; a 1,000-path simulation study: about 1 hour). Margrabe is about 80 times faster but only covers $K=0$. The project looks for methods that are much faster than Monte Carlo for $K
+eq0$ while keeping prices and deltas accurate enough to hedge, judged on four criteria: price accuracy, delta accuracy, computing time and robustness.
+
 The project builds a modular Python framework to:
 
 1. price European spread options with exact formulas, approximations and numerical methods;
@@ -175,15 +178,15 @@ These are simulation results under stated assumptions, not market quotes. Runtim
 
 ## Notebooks
 
-Each notebook answers one question and follows the same layout: question, banking motivation, experiment, results, interpretation, desk takeaway, key takeaways. Methods are never given a notebook of their own: they are rows in the shared tables of notebook 04.
+Each notebook answers one question and contains only what is implemented and measured; plans stay in the roadmap below. Methods are never given a notebook of their own: each new method adds rows to the shared tables of notebook 04.
 
 | Notebook | Main question | Validation | Content |
 |---|---|---|---|
-| [00 Project overview](notebooks/00_project_overview.ipynb) | What does a bank compute when it sells a spread option, and why? | none (map) | life cycle of a trade, five activities, model vs method vs parameters, four uses of simulation |
+| [00 Project overview](notebooks/00_project_overview.ipynb) | What is computed every evening, and why speed matters | none (map) | life cycle of a trade, the three kinds of simulation, model vs method vs parameters, computing budget of the project |
 | [01 Delta hedging](notebooks/01_hedging_simulation.ipynb) | How does a delta hedge work, and why is it never exact? | numerical | cash flows vs market value, one path day by day, theta/gamma, rebalancing frequency, wrong volatility, trading costs |
 | [02 Parameter estimation](notebooks/02_volatility_estimation.ipynb) | How do we choose $\sigma$ and $\rho$ without knowing the future? | empirical | data conventions, historical vs EWMA (three $\lambda$), Brent–WTI correlation, one summary table |
 | [03 Historical hedging](notebooks/03_hedging_real_data.ipynb) | What happens when the hedge is replayed on real prices? | empirical | Brent call backtests, error analysis, hindsight diagnostics, first Brent–WTI exchange-option backtest |
-| [04 Methods benchmark](notebooks/04_methods_comparison.ipynb) | Which method gives accurate prices and deltas fast enough? | numerical | 36-point grid, delta estimators (bias vs noise), timings and workloads, hedging error decomposition, decision table, neural-network protocol |
+| [04 Methods benchmark](notebooks/04_methods_comparison.ipynb) | Which method gives accurate prices and deltas fast enough? | numerical | 36-point grid, delta estimators (bias vs noise), timings and the project's workloads, hedging error decomposition, summary of the implemented methods |
 
 Simulation under a known model (01, 04) validates methods; historical data (02, 03) test parameters and models. The two are never mixed in one experiment.
 
@@ -207,7 +210,7 @@ Every model and method is compared on the same metrics, in shared tables; none g
 - [ ] Li–Deng–Zhou (2008): refined approximation of prices and Greeks.
 - [ ] Carmona–Durrleman (2003): pricing bounds and analytical approximations.
 - [ ] Fourier pricing: transform-based numerical methods.
-- [ ] Neural-network surrogate (MLP): accuracy against training and evaluation cost.
+- [ ] Neural-network surrogate (MLP): accuracy against training and evaluation cost. Protocol: inputs normalised by $S_2$ ($S_1/S_2$, $K/S_2$, $T$, $\sigma_1$, $\sigma_2$, $\rho$, $r$); labels from Monte Carlo with control variate; independent train/validation/test sets; deltas by automatic differentiation; break-even number of valuations $N^\star=(C_\text{data}+C_\text{train})/(t_\text{ref}-t_\text{net})$. Most useful for models without fast formulas (Heston).
 
 ### Phase C: parameter estimation and spread hedging on real data
 
