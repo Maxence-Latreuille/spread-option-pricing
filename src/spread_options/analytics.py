@@ -28,3 +28,10 @@ def margrabe_deltas(S1_0, S2_0, T, sigma1, sigma2, rho):
     d2 = d1 - sigma_hat * np.sqrt(T)
     # the extra terms from d1 and d2 cancel since S1*n(d1) = S2*n(d2), so only N(d1) and -N(d2) remain
     return norm.cdf(d1), -norm.cdf(d2) # delta1, delta2
+
+def kirk_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho):
+    """Kirk approximation of a spread call: Margrabe with asset 2 replaced by 'asset 2 + K'."""
+    B0 = S2_0 + K * np.exp(-r * T) # today's value of 'asset 2 + K': K is paid at maturity
+    w = S2_0 / B0 # share of asset 2 in the sum: only this part moves, K stays fixed
+    # treat 'asset 2 + K' as lognormal with vol sigma2 * w, then exchange it for asset 1 (Margrabe)
+    return margrabe_call(S1_0, B0, T, sigma1, sigma2 * w, rho)
