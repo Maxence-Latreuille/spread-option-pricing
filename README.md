@@ -5,9 +5,10 @@ assets, with an application to energy markets (Brent, WTI, heating oil).
 
 **Status:** the single-asset foundation (Black–Scholes call, delta hedging,
 volatility estimation, real-data backtest on Brent) is done. On the spread side,
-the bivariate GBM with its Monte Carlo reference and Margrabe's exact formula
-(K = 0) are implemented and tested. Next: Margrabe's deltas and the first hedge of a
-spread in simulation (see the [roadmap](#roadmap)).
+the bivariate GBM with its Monte Carlo reference, Margrabe's exact price and deltas
+(K = 0) and two-asset delta hedging are implemented and tested. Next: notebook 04
+(simulation lab: accuracy, speed, hedging) with Monte Carlo and Margrabe as its first
+rows, then Kirk (see the [roadmap](#roadmap-the-master-table)).
 
 ## Context
 
@@ -27,7 +28,8 @@ Projet d'Application Recherche (PAr), École Centrale de Lyon, Département SHLS
 - [x] Simulate two correlated prices (bivariate GBM) and price a spread call by Monte Carlo
 - [x] Price the zero-strike spread call exactly (Margrabe)
 - [ ] Compare fast pricing methods against Monte Carlo (price error, delta error, computation time)
-- [ ] Hedge a spread option in simulation, then on a real spread trade with ρ estimated from data
+- [x] Hedge a spread option in simulation (Margrabe deltas, two-asset delta hedge)
+- [ ] Hedge a real spread trade with σ1, σ2 and ρ estimated from data
 - [ ] Price under stochastic volatility (Heston) and with jumps
 - [ ] Study implied volatility / implied correlation across strike and maturity
 - [ ] *(optional)* Price with a multilayer perceptron and benchmark it against the
@@ -86,50 +88,89 @@ The working plan is to **keep the bivariate GBM**, replace Monte Carlo by a fast
 formula so that daily hedging is practical, and change the model only if the
 real-data tests show that the GBM is the problem.
 
-## How the comparison is organised
+## How the project is organised
 
-### One hedging strategy, many deltas
+Every model and every pricing method is looked at through three lenses.
 
-The hedging strategy is the same throughout the project: every day, hold Δ1 units of
-asset 1 and Δ2 units of asset 2, financed with cash, and rebalance the next day. Only
-the values of the deltas change from one model or method to another. The hedging code
-takes the delta function as an argument, so comparing methods in a hedge means
-changing one line.
-
-### A three-stage funnel
-
-Crossing every model, method and parameter estimator would give dozens of hedging
-experiments that nobody could read. Each stage changes one thing and keeps the rest
-fixed at the winner of the previous stage.
-
-| Stage | What varies | What is fixed | Data | Judged by | Notebook |
-|---|---|---|---|---|---|
-| 1. Methods | the pricing method | the model and its parameters | simulation | price and delta error against the model's reference, computation time | 04, and 01 for 2–3 methods |
-| 2. Parameters | the estimator of σ1, σ2, ρ (historical, EWMA) | the best method | real | estimate vs value realised over the next year | 02, spread part |
-| 3. Models | the model | each with its best method and the best estimator | real | real hedging P&L and hindsight P&L | 03, spread part |
-
-- Stage 1 concludes on the best method **for a given model, in the parameter range of
-  our data** (ρ between 0.7 and 0.97, K around the spread level). Each new model gets
-  its own small stage 1 with the methods that apply to it (Heston: Monte Carlo vs
-  Fourier).
-- A method whose deltas match the reference gives the same hedge, so stage 1 mostly
-  compares prices and deltas. Full hedging simulations are only run for a few methods,
-  to show how delta errors turn into P&L dispersion.
-- Using a GBM formula while the market is not a GBM is a model error. It shows up at
-  stage 3, not at stage 1.
-- All methods are run on the same base case, the same grid of K, ρ and T, and the
-  same random seeds, and reported with the same indicators (mean, standard deviation,
-  standard deviation / premium, worst 5 %, time).
-
-### What simulation can answer, and what needs real data
-
-| Question | Where it is answered | Why |
+| Lens | Question | Where |
 |---|---|---|
-| Does a method compute its model's price? | simulation only | the right answer is known; on market data the errors mix |
-| Does the hedge work when the model is true? (mean P&L ≈ 0, dispersion shrinking as 1/√n) | simulation (notebook 01) | same reason |
-| Can σ1, σ2 and ρ be estimated before the trade? | real data (notebook 02) | compare the estimate with the value realised over the next year |
-| Is the model realistic? | real data (notebook 03) | hedging P&L on real paths, then recomputed with the realised parameters: if this "hindsight" P&L is close to 0, the model is fine and the error comes from the parameters |
-| Do our prices match quoted spread-option prices? | not feasible | no free spread-option quotes. The call study did not use option quotes either: everything is judged through hedging P&L on real price paths |
+| **1. Simulation lab** | Inside a model we control, does the method give the right price and deltas, how fast, and does its hedge work? | notebook 04 (one table per criterion) |
+| **2. Real market** | Can the parameters be estimated, and does the model survive real price paths? | notebooks 02 and 03 |
+| **3. Desk practice** | Do trading desks use it, for what, and why did they pick it over the others? | literature, one column of the master table below |
+
+A model or method is never studied in a notebook of its own. Each one brings a
+library function, a unit test against a known case, and **one row** in the shared
+tables. Adding the fifteenth method costs as much as adding the second.
+
+### Lens 1: the simulation lab (notebook 04)
+
+Prices are simulated from the model itself, so the right answer is known. The
+notebook has three fixed sections, one per criterion, and each method adds one row
+to each.
+
+| Section | Criterion | Measured as | Reference |
+|---|---|---|---|
+| 1 | **Accuracy** | price error and delta error, over a common grid of K, ρ and T around our data (ρ from 0.7 to 0.97, K around the spread level) | the model's exact formula when one exists, else Monte Carlo with many paths |
+| 2 | **Speed** | milliseconds per price, and per pair of deltas | — |
+| 3 | **Hedging** | daily delta hedge on 1 000 simulated paths: mean P&L (≈ 0 if the price is right), standard deviation / premium, worst 5 % | the call of notebook 01: 4.8 % of the premium with daily rebalancing |
+
+All rows use the same base case (Brent 80 $, WTI 75 $, σ1 = 30 %, σ2 = 35 %,
+ρ = 0.6, r = 3 %, one year), the same grid and the same random seeds. The hedging
+strategy itself is fixed for the whole project and was validated once, on the call,
+in notebook 01: every day, hold Δ1 units of asset 1 and Δ2 units of asset 2 financed
+with cash. Only the delta function changes from one row to the next.
+
+Each model gets its own block of rows with the methods that apply to it (under
+Heston: Monte Carlo vs Fourier). Using a GBM formula while the market is not a GBM is
+a model error: it is measured with real data (lens 2), not here.
+
+### Lens 2: real market (notebooks 02 and 03)
+
+| Notebook | Question | How |
+|---|---|---|
+| 02 | Can σ1, σ2 and ρ be forecast before the trade? | estimate (historical, EWMA) vs value realised over the next year |
+| 03 | Is the model realistic? | real hedging P&L, then the same hedge recomputed with the realised parameters ("hindsight" P&L): close to 0 means the model is fine and the error comes from the parameters; far from 0 means the model itself is wrong. One row per model. |
+
+Spread-option quotes are not freely available, so prices are never compared with
+market quotes: everything is judged through hedging P&L on real price paths, as for
+the call.
+
+### Lens 3: desk practice
+
+For each model and method, the report states who uses it and why, with a source.
+What is already established:
+
+- **Kirk's formula** is the most popular spread-option formula among market
+  participants ([Probability in the Engineering and Informational Sciences, 2023](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/A6FCDA861E587A47FDE425744FE60996/S0269964823000049a.pdf/a-closed-form-approximation-for-pricing-spread-options-on-futures-under-a-mean-reverting-spot-price-model-with-multiscale-stochastic-volatility.pdf)).
+  Bjerksund and Stensland showed that it underprices near K = 0 and overprices
+  further away, which motivates their correction ([MathWorks documentation](https://uk.mathworks.com/help/fininst/pricing-european-and-american-spread-options.html)).
+- **Bachelier**: when WTI futures went negative on 20 April 2020, CME Clearing
+  switched its energy options valuation to the Bachelier model, effective 22 April
+  2020 ([CME advisory 20-171](https://www.cmegroup.com/notices/clearing/2020/04/Chadv20-171.html)).
+- **Black-76**: energy options are written on futures, so desks use the futures
+  versions of the formulas (no carry term). Our notebooks treat Brent like a stock;
+  the final model switches to Black-76.
+- **Monte Carlo** is kept for products with no formula (path-dependent, many assets);
+  it is too slow and too noisy for daily deltas on a whole book.
+- **Fixing the model by hand**: desks keep simple models but feed them a different
+  implied volatility (and implied correlation) per strike and maturity, which is
+  objective 4 of the project.
+- Still to document: how desks quote and calibrate implied correlation (and its
+  skew across strikes), and which models are used for crack spreads.
+
+### Why the GBM + Monte Carlo reference is not enough
+
+It is right inside its own world, but:
+
+| Limit | Kind | Seen where | Answered by |
+|---|---|---|---|
+| Monte Carlo: 5.8 ms per price, noisy deltas (Δ1 = 0.56 or 0.39 depending on the seeds), 49 min for a 1 000-path hedge | method | spread notebooks so far | fast methods (B) |
+| Prices stay positive; WTI closed at −37.63 $ on 20 April 2020 | model | Yahoo data | Bachelier (D1) |
+| Constant volatility; it moves by 14.7 points a year on Brent | model | notebooks 02, 03 | Heston (D2) |
+| No jumps (2020, 2022) | model | notebook 03 (hindsight P&L +1.80 $ in 2022) | Merton (D3) |
+| Constant ρ; Brent / WTI went from 0.92 in 2019 to 0.46 in 2020 | parameter | correlation table below | estimation (C1) |
+| Energy spreads tend to revert to a normal level (refining or transport cost); the GBM lets them drift away | model | to be measured on our data | mean-reverting spread model (D5) |
+| One volatility for every strike, while markets show a smile | model | objective 4 | implied vol / correlation (E) |
 
 ### The correlation ρ can be estimated, but it moves
 
@@ -181,6 +222,7 @@ r = 3 %, one year.
 | Margrabe, K = 0 (ρ = 0 / 0.6 / 0.9) | 16.76 / 11.78 / 7.65 $, against Monte Carlo 16.63 / 11.69 / 7.62 $, all within 2 standard errors |
 | Effect of r on the K = 0 price | none: the Monte Carlo price is identical with r = 3 % and r = 10 % |
 | Margrabe deltas (ρ = 0.6) | buy 0.643 barrel of Brent, sell 0.529 barrel of WTI; this hedge costs exactly the option price (11.78 $), with no borrowing |
+| Daily Margrabe hedge, 100 simulated paths | mean P&L +0.03 $, standard deviation 0.52 $ (4.4 % of the premium; 4.8 % for the call) |
 | Computation time per price | Monte Carlo 5.8 ms, Margrabe 0.08 ms, Black–Scholes 0.09 ms |
 
 Unit tests cover both ends of the chain: with S2 = 0 the spread call is a plain call
@@ -188,64 +230,42 @@ and Monte Carlo gives back Black–Scholes; with K = 0 Monte Carlo gives back
 Margrabe. The second test is the one that checks the correlation: it fails if ρ is
 dropped from the simulation or if the square root in the mixing formula is forgotten.
 
-Known limits of the GBM reference: each leg stays positive, so a negative price
-such as WTI at −37.63 $ on 20 April 2020 cannot occur; Monte Carlo is too slow and
-too noisy for daily deltas (about 49 minutes for a 1 000-path hedging simulation);
-the price is only exact if the GBM assumptions (constant σ1, σ2, ρ, no jumps) hold.
+## Roadmap: the master table
 
-## Roadmap
+Each row follows the same recipe: formula worked out on a small numerical example,
+library function, one unit test against a known case, then one row in each table of
+notebook 04 and a line of desk practice in the report.
 
-Each step comes with its formula worked out on a small numerical example, a library
-function, one unit test against a known case, and a notebook analysis.
+**Phases.** A: reference. B: fast methods under the GBM (simulation lab).
+C: real data with the best GBM method (choose the spread first: crack
+`42 × HO − WTI` or `Brent − WTI`). D: other models, each with its own methods.
+E: implied volatility and correlation.
 
-**Phase A: model = bivariate GBM, reference method**
+| # | Model | Method | Kind | Simulation lab (notebook 04) | Real data | Desk practice | Status |
+|---|---|---|---|---|---|---|---|
+| A0 | GBM | Monte Carlo | reference | reference for the others; 5.8 ms per price | — | products with no formula | done |
+| B1 | GBM | Margrabe (K = 0) | exact | exact price and deltas; 0.08 ms; daily hedge mean ≈ 0, std ≈ 4–5 % of premium | — | the base of Kirk | done |
+| B2 | GBM | **Kirk (1995)** | approximation | | 03 | most popular formula on desks | next |
+| B3 | GBM | Bjerksund–Stensland (2014) | approximation | | | correction of Kirk's known bias | planned |
+| B4 | GBM | Li–Deng–Zhou (2008) | approximation | | | academic, very accurate | planned |
+| B5 | GBM | Carmona–Durrleman (2003) | lower bound | | | academic | planned |
+| B6 | GBM | Fourier (Hurd–Zhou 2010) | numerical | | | to document | planned |
+| B7 | GBM | Neural network (MLP) | learned | | | to document | planned |
+| C1 | GBM | estimators of σ1, σ2, ρ (historical, EWMA) | parameters | — | 02 | to document | planned |
+| C2 | GBM | best method of B | real trade | — | 03 | — | planned |
+| D1 | **Bachelier** | closed form, vs Monte Carlo | exact | | 03 | CME clearing since April 2020 | planned |
+| D2 | Heston (bivariate) | Monte Carlo, vs Fourier | reference / numerical | | 03 | to document | planned |
+| D3 | Merton jumps (bivariate) | Monte Carlo | reference | | 03 | to document | planned |
+| D4 | SABR | Hagan's formula | approximation | | | smile model, to document for energy | optional |
+| D5 | Mean-reverting spread (Ornstein–Uhlenbeck) | closed form, vs Monte Carlo | exact | | 03 | to document | planned |
+| E | any | invert Kirk or Margrabe for ρ or the spread volatility | implied | method only (no free quotes) | | implied correlation, smile | planned |
 
-| # | Step | Status |
-|---|---|---|
-| A0 | Bivariate GBM + Monte Carlo, the reference for every other method | done |
-
-**Phase B: fast methods under the same GBM model** (stage 1 of the funnel)
-
-| # | Method | Idea | Accuracy / limits | Reference check | Status |
-|---|---|---|---|---|---|
-| B1 | **Margrabe (1978)** | exchange option, K = 0 | exact with exact deltas, but only for K = 0; first spread hedged in simulation | Monte Carlo ≈ Margrabe | price done; deltas and hedge next |
-| B2 | **Kirk (1995)** | treat S2 + K as lognormal, Black-type formula | energy market standard; degrades for large K or ρ close to 1 | K = 0 gives Margrabe | planned |
-| B3 | Modified Kirk (Bjerksund–Stensland) | correction of Kirk's formula | more accurate, still closed form | vs Monte Carlo | planned |
-| B4 | Li–Deng–Zhou (2008) | second-order closed-form approximation | very accurate, heavier formula | vs Monte Carlo | planned |
-| B5 | Carmona–Durrleman (2003) | optimised lower bound | very accurate, needs a numerical optimisation | vs Monte Carlo | planned |
-| B6 | Fourier (Hurd–Zhou 2010) | price through a Fourier transform | near-exact and fast; most useful later under Heston | vs Monte Carlo | optional |
-| B7 | Neural network (MLP) | learn the price from (S1, S2, K, σ1, σ2, ρ, T) | compare error and computation time with the formulas | vs Monte Carlo / Kirk on a test set | optional |
-
-**Phase C: real data, still with the GBM** (stages 2 and 3; the spread, crack
-`42 × HO − WTI` or `Brent − WTI`, is chosen before this phase)
-
-| # | Step | Notebook |
-|---|---|---|
-| C1 | Estimate σ1, σ2 and ρ (historical, EWMA), estimate vs realised | 02, spread part |
-| C2 | Real spread trade hedged with the best method of phase B; real P&L and hindsight P&L | 03, spread part |
-
-**Phase D: other models**, used where phase C shows a model error (Heston is part
-of the project brief in any case). Each one gets its own small stage 1, then a
-real-data test.
-
-| # | Model | What it fixes | Pricing methods | Reference check |
-|---|---|---|---|---|
-| D1 | **Bachelier** (normal spread) | negative spreads and prices (WTI in 2020) | closed form vs Monte Carlo | Monte Carlo on a normal spread |
-| D2 | Bivariate Heston | volatility that changes during the year | Monte Carlo vs Fourier | vol of vol = 0 gives the GBM |
-| D3 | Bivariate Merton jump-diffusion | shocks such as 2020 and 2022 | Monte Carlo (vs Fourier) | jump intensity = 0 gives the GBM |
-| D4 | SABR | stochastic volatility, smile model | | optional |
-
-**Phase E: implied volatility and correlation.** The implied volatility of a spread
-option is not well defined: the price depends on three parameters (σ1, σ2, ρ) and a
-single quote cannot pin down three unknowns. Two readings are possible:
-
-1. **Implied correlation**: fix σ1 and σ2 at the implied volatilities quoted on each
-   underlying and invert for ρ (the market convention in energy). The price
-   decreases with ρ, so the inversion is stable.
-2. **Implied spread volatility**: invert Margrabe for sigma_hat, which allows a
-   strike × maturity surface comparable to a vanilla one.
-
-Without free spread-option quotes, this phase can only demonstrate the method.
+**Phase E in detail.** The implied volatility of a spread option is not well defined:
+the price depends on three parameters (σ1, σ2, ρ) and one quote cannot pin down three
+unknowns. Two readings: fix σ1 and σ2 at the implied volatilities quoted on each leg
+and invert for ρ (implied correlation, the energy-market convention; stable because
+the price decreases with ρ), or invert Margrabe for sigma_hat to draw a strike ×
+maturity surface.
 
 ## Repository structure
 
@@ -253,12 +273,12 @@ Without free spread-option quotes, this phase can only demonstrate the method.
         products.py       payoffs (call, put, spread call)
         models.py         GBM terminal prices and paths, bivariate GBM paths
         monte_carlo.py    Monte Carlo pricing (call, put, spread call), returns (price, standard error)
-        analytics.py      closed forms (Black–Scholes price and delta, Margrabe price)
-        hedging.py        delta-hedging P&L along one or many paths (single asset)
+        analytics.py      closed forms (Black–Scholes price and delta, Margrabe price and deltas)
+        hedging.py        delta-hedging P&L along one or many paths (one asset, or two for a spread)
         volatility.py     volatility estimators (historical, EWMA)
         data.py           daily prices from Yahoo Finance
     tests/                Unit tests (pytest), one meaningful test per function
-    notebooks/            Analyses and figures for the report (01, 02, 03)
+    notebooks/            Analyses and figures for the report (01–03 done, 04 simulation lab next)
 
 ## Getting started
 
