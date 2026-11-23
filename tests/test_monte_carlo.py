@@ -1,6 +1,6 @@
 import numpy as np
 
-from spread_options.analytics import bs_call, kirk_call, margrabe_call, margrabe_deltas
+from spread_options.analytics import bs_call, kirk_call, kirk_deltas, margrabe_call, margrabe_deltas
 from spread_options.monte_carlo import mc_call, mc_spread_call, mc_spread_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
@@ -55,3 +55,14 @@ def test_kirk_matches_mc_for_nonzero_strike():
     # 3. Kirk 9.047 vs MC 9.063, gap 0.016 < 3 * 0.019 = 0.057
     #    catches: w forgotten -> 9.418, K not discounted -> 8.971
     assert abs(kirk_call(**spread) - price) < 3 * std_err
+
+
+def test_kirk_deltas_match_mc_deltas():
+    # 1. K = 5: Kirk deltas (bumps) +0.5587 / -0.4420; MC pathwise deltas +0.5586 / -0.4431, std errors 0.0019 / 0.0015
+    spread = dict(S1_0=80.0, S2_0=75.0, K=5.0, T=1.0, r=0.03, sigma1=0.3, sigma2=0.35, rho=0.6)
+    kirk1, kirk2 = kirk_deltas(**spread)
+    delta1, delta2, err1, err2 = mc_spread_deltas(**spread)
+    # 2. each Kirk delta within 3 standard errors of the MC one: gaps 0.1 and 0.7 standard errors
+    #    catches: K forgotten -> +0.643 / -0.529, divided by h instead of 2h -> +1.117 / -0.884
+    assert abs(kirk1 - delta1) < 3 * err1
+    assert abs(kirk2 - delta2) < 3 * err2

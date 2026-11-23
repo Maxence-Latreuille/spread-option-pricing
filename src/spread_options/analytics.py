@@ -35,3 +35,12 @@ def kirk_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho):
     w = S2_0 / B0 # share of asset 2 in the sum: only this part moves, K stays fixed
     # treat 'asset 2 + K' as lognormal with vol sigma2 * w, then exchange it for asset 1 (Margrabe)
     return margrabe_call(S1_0, B0, T, sigma1, sigma2 * w, rho)
+
+def kirk_deltas(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, h=0.01):
+    """Kirk deltas by central bumps: units of asset 1 and of asset 2 to hold (negative = sell short)."""
+    price = lambda s1, s2: kirk_call(s1, s2, K, T, r, sigma1, sigma2, rho) # Kirk price, only the two spots change
+    # slope of the price when one spot moves by +/- h, the other one fixed
+    # bumping S2 also moves w and sigma_K, so delta2 includes that effect (unlike -N(d2))
+    delta1 = (price(S1_0 + h, S2_0) - price(S1_0 - h, S2_0)) / (2 * h)
+    delta2 = (price(S1_0, S2_0 + h) - price(S1_0, S2_0 - h)) / (2 * h)
+    return delta1, delta2
