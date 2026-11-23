@@ -1,6 +1,6 @@
 import numpy as np
 
-from spread_options.analytics import bs_call, kirk_call, kirk_deltas, margrabe_call, margrabe_deltas
+from spread_options.analytics import bjerksund_stensland_call, bs_call, kirk_call, kirk_deltas, margrabe_call, margrabe_deltas
 from spread_options.monte_carlo import mc_call, mc_spread_call, mc_spread_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
@@ -66,3 +66,14 @@ def test_kirk_deltas_match_mc_deltas():
     #    catches: K forgotten -> +0.643 / -0.529, divided by h instead of 2h -> +1.117 / -0.884
     assert abs(kirk1 - delta1) < 3 * err1
     assert abs(kirk2 - delta2) < 3 * err2
+
+
+def test_bjerksund_stensland_matches_mc_where_kirk_is_worst():
+    # 1. K = -5, rho = 0.97: the case of notebook 04 where Kirk was the most wrong (4 cents too high)
+    spread = dict(S1_0=80.0, S2_0=75.0, K=-5.0, T=1.0, r=0.03, sigma1=0.3, sigma2=0.35, rho=0.97)
+    # 2. 1,000,000 scenarios: MC 10.2833, std error 0.0059 (small: the two assets move almost together)
+    price, std_err = mc_spread_call(n_paths=1_000_000, **spread)
+    # 3. Bjerksund-Stensland 10.2873, gap 0.004 < 3 * 0.0059 = 0.018
+    #    catches: K with asset 2's probability (d3 = d2) -> 10.063, K not discounted -> 10.424,
+    #    b**2 instead of b in the last term of d2 -> 11.611; Kirk itself (10.329, gap 0.045) would fail too
+    assert abs(bjerksund_stensland_call(**spread) - price) < 3 * std_err

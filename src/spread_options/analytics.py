@@ -44,3 +44,18 @@ def kirk_deltas(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, h=0.01):
     delta1 = (price(S1_0 + h, S2_0) - price(S1_0 - h, S2_0)) / (2 * h)
     delta2 = (price(S1_0, S2_0 + h) - price(S1_0, S2_0 - h)) / (2 * h)
     return delta1, delta2
+
+
+def bjerksund_stensland_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho):
+    """Bjerksund-Stensland (2014) spread call: Kirk's exercise rule, but asset 2 and K each get their own probability."""
+    B0 = S2_0 + K * np.exp(-r * T) # same 'asset 2 + K' as in Kirk
+    b = S2_0 / B0 # share of B0 that moves (Kirk's w)
+    sigma = np.sqrt(sigma1**2 - 2 * rho * sigma1 * sigma2 * b + sigma2**2 * b**2) # same vol as in Kirk
+    L = np.log(S1_0 / B0)
+    den = sigma * np.sqrt(T)
+    # same start L and same denominator; only the drift term changes (seen from asset 1, asset 2, or cash)
+    d1 = (L + (sigma1**2 / 2 - b * rho * sigma1 * sigma2 + b**2 * sigma2**2 / 2) * T) / den
+    d2 = (L + (-sigma1**2 / 2 + rho * sigma1 * sigma2 + b**2 * sigma2**2 / 2 - b * sigma2**2) * T) / den
+    d3 = (L + (-sigma1**2 / 2 + b**2 * sigma2**2 / 2) * T) / den
+    # receive asset 1, give back asset 2, pay K: each weighted by its own probability
+    return S1_0 * norm.cdf(d1) - S2_0 * norm.cdf(d2) - K * np.exp(-r * T) * norm.cdf(d3)
