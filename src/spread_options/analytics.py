@@ -19,3 +19,12 @@ def margrabe_call(S1_0, S2_0, T, sigma1, sigma2, rho):
     sigma_hat = np.sqrt(sigma1**2 + sigma2**2 - 2 * rho * sigma1 * sigma2)
     # call on the ratio with strike 1, counted in units of asset 2: Black-Scholes with K = S2_0 and r = 0
     return bs_call(S1_0, S2_0, T, 0.0, sigma_hat)
+
+def margrabe_deltas(S1_0, S2_0, T, sigma1, sigma2, rho):
+    """Margrabe deltas: units of asset 1 and of asset 2 to hold (negative = sell short)."""
+    # same ratio volatility and d1, d2 as in margrabe_call (Black-Scholes with K = S2_0, r = 0)
+    sigma_hat = np.sqrt(sigma1**2 + sigma2**2 - 2 * rho * sigma1 * sigma2)
+    d1 = (np.log(S1_0 / S2_0) + sigma_hat**2 / 2 * T) / (sigma_hat * np.sqrt(T))
+    d2 = d1 - sigma_hat * np.sqrt(T)
+    # the extra terms from d1 and d2 cancel since S1*n(d1) = S2*n(d2), so only N(d1) and -N(d2) remain
+    return norm.cdf(d1), -norm.cdf(d2) # delta1, delta2

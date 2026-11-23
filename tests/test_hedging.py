@@ -1,9 +1,9 @@
 import numpy as np
 
-from spread_options.analytics import bs_call, bs_delta
-from spread_options.hedging import hedge_one_path, delta_hedge_pnl
-from spread_options.models import simulate_gbm_paths
-from spread_options.products import call_payoff
+from spread_options.analytics import bs_call, bs_delta, margrabe_call, margrabe_deltas
+from spread_options.hedging import hedge_one_path, delta_hedge_pnl, delta_hedge_spread_pnl
+from spread_options.models import simulate_gbm_paths, simulate_bivariate_gbm_paths
+from spread_options.products import call_payoff, spread_call_payoff
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
 N_PATHS = 100 # the simple loop is slow, 500 scenarios are enough for these checks (here 100 to make pytest faster)
@@ -59,3 +59,24 @@ def test_underestimated_vol_loses_the_price_gap():
     gap = bs_call(S0, K, T, r, sigma) - bs_call(S0, K, T, r, 0.3) # 9.41 - 13.28 = -3.87
     std_err = pnl.std(ddof=1) / np.sqrt(N_PATHS) # ~ 0.08
     assert abs(pnl.mean() - gap) < 3 * std_err # |-3.90 - (-3.87)| = 0.03 < 0.24
+
+
+def test_daily_exchange_option_hedge_pnl_is_zero_on_average():
+    # 1. exchange option (K = 0) Brent/WTI, the model is right: same sigma1, sigma2, rho for prices and hedge
+    S1_0, S2_0, T, r = 80.0, 75.0, 1.0, 0.03
+    sigma1, sigma2, rho = 0.3, 0.35, 0.6
+    obs_times = np.linspace(0, T, 253) # 253 dates = 252 daily rebalancings
+    # 2. the "real world": 100 pairs of correlated paths (one row = one scenario)
+    paths1, paths2 = simulate_bivariate_gbm_paths(S1_0, S2_0, r, sigma1, sigma2, rho, obs_times, N_PATHS)
+    # 3. the bank sells at the Margrabe price (11.78) and holds both Margrabe deltas every day
+    pnl = delta_hedge_spread_pnl(
+        paths1, paths2, T, r,
+        price0=margrabe_call(S1_0, S2_0, T, sigma1, sigma2, rho),
+        deltas_fn=lambda S1, S2, time_left: margrabe_deltas(S1, S2, time_left, sigma1, sigma2, rho),
+        payoff_fn=lambda S1T, S2T: spread_call_payoff(S1T, S2T, 0.0),
+    ) # obtained: mean 0.03, std 0.52
+    # 4. no bias: the mean P&L is 0 up to 3 standard errors (0.52 / sqrt(100) = 0.05)
+    std_err = pnl.std(ddof=1) / np.sqrt(N_PATHS)
+    assert abs(pnl.mean()) < 3 * std_err
+    # 5. daily (not continuous) hedging leaves a small residual: 0.52 is about 4% of the 11.78 price
+    assert pnl.std(ddof=1) < 0.1 * margrabe_call(S1_0, S2_0, T, sigma1, sigma2, rho)

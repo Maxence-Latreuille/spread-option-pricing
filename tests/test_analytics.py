@@ -1,4 +1,4 @@
-from spread_options.analytics import bs_call, bs_delta
+from spread_options.analytics import bs_call, bs_delta, margrabe_call, margrabe_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
 
@@ -16,3 +16,19 @@ def test_delta_goes_from_0_to_1():
     # deep out of the money: call barely moves; deep in the money: moves like the stock
     assert bs_delta(**{**PARAMS, "S0": 50.0}) < 0.01
     assert bs_delta(**{**PARAMS, "S0": 200.0}) > 0.99
+
+
+def test_margrabe_deltas_are_slopes_of_price():
+    # 1. same exchange option as the Margrabe price test: price 11.78, deltas +0.6430 / -0.5289
+    spread = dict(S1_0=80.0, S2_0=75.0, T=1.0,
+     sigma1=0.3, sigma2=0.35, rho=0.6)
+    delta1, delta2 = margrabe_deltas(**spread)
+    h = 0.01
+    # 2. move the Brent only (WTI stays at 75): price slope = delta of asset 1
+    up1 = margrabe_call(**{**spread, "S1_0": 80.0 + h})
+    down1 = margrabe_call(**{**spread, "S1_0": 80.0 - h})
+    assert abs((up1 - down1) / (2 * h) - delta1) < 1e-6
+    # 3. move the WTI only (Brent stays at 80): price slope = delta of asset 2, negative
+    up2 = margrabe_call(**{**spread, "S2_0": 75.0 + h})
+    down2 = margrabe_call(**{**spread, "S2_0": 75.0 - h})
+    assert abs((up2 - down2) / (2 * h) - delta2) < 1e-6
