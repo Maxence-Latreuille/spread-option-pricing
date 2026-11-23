@@ -22,3 +22,15 @@ def mc_spread_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, n_paths=100_000, se
     S1, S2 = simulate_bivariate_gbm_paths(S1_0, S2_0, r, sigma1, sigma2, rho, [T], n_paths, seed) # mu = r: risk-neutral
     discounted = np.exp(-r * T) * spread_call_payoff(S1[:, -1], S2[:, -1], K)
     return discounted.mean(), discounted.std(ddof=1) / np.sqrt(n_paths)
+
+def mc_spread_deltas(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, n_paths=100_000, seed=23):
+    """Pathwise Monte Carlo deltas of a spread call: (delta1, delta2, std_err1, std_err2)."""
+    S1, S2 = simulate_bivariate_gbm_paths(S1_0, S2_0, r, sigma1, sigma2, rho, [T], n_paths, seed) # mu = r: risk-neutral
+    S1T, S2T = S1[:, -1], S2[:, -1]
+    in_money = S1T - S2T - K > 0 # True/False per scenario: the payoff only moves when the option ends in the money
+    # gain of each discounted payoff if S1_0 were 1 $ higher: S1T grows by S1T / S1_0 (same % move)
+    delta1_per_path = np.exp(-r * T) * in_money * S1T / S1_0
+    delta2_per_path = -np.exp(-r * T) * in_money * S2T / S2_0 # minus: the payoff falls when S2 rises
+    # delta = how much the price (mean of payoffs) moves = mean of how much each payoff moves
+    return (delta1_per_path.mean(), delta2_per_path.mean(),
+            delta1_per_path.std(ddof=1) / np.sqrt(n_paths), delta2_per_path.std(ddof=1) / np.sqrt(n_paths))
