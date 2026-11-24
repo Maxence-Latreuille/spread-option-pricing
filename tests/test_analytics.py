@@ -1,4 +1,4 @@
-from spread_options.analytics import bs_call, bs_delta, margrabe_call, margrabe_deltas
+from spread_options.analytics import bs_call, bs_delta, exact_spread_call, exact_spread_deltas, margrabe_call, margrabe_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
 
@@ -31,4 +31,19 @@ def test_margrabe_deltas_are_slopes_of_price():
     # 3. move the WTI only (Brent stays at 80): price slope = delta of asset 2, negative
     up2 = margrabe_call(**{**spread, "S2_0": 75.0 + h})
     down2 = margrabe_call(**{**spread, "S2_0": 75.0 - h})
+    assert abs((up2 - down2) / (2 * h) - delta2) < 1e-6
+
+
+def test_exact_spread_deltas_are_slopes_of_exact_price():
+    # 1. fil rouge with K = 5: deltas from the formula +0.5600617 / -0.4433854
+    spread = dict(S1_0=80.0, S2_0=75.0, K=5.0, T=1.0, r=0.03, sigma1=0.3, sigma2=0.35, rho=0.6)
+    delta1, delta2 = exact_spread_deltas(**spread)
+    h = 0.01
+    # 2. move the Brent only (80.01 and 79.99), WTI stays at 75: price slope 0.5600617
+    up1 = exact_spread_call(**{**spread, "S1_0": 80.0 + h})
+    down1 = exact_spread_call(**{**spread, "S1_0": 80.0 - h})
+    assert abs((up1 - down1) / (2 * h) - delta1) < 1e-6
+    # 3. move the WTI only (75.01 and 74.99), Brent stays at 80: price slope -0.4433854
+    up2 = exact_spread_call(**{**spread, "S2_0": 75.0 + h})
+    down2 = exact_spread_call(**{**spread, "S2_0": 75.0 - h})
     assert abs((up2 - down2) / (2 * h) - delta2) < 1e-6

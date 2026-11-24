@@ -43,6 +43,37 @@ def exact_spread_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, n_points=32):
         price += wi * c
     return price
 
+def exact_spread_deltas(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, n_points=32):
+    """Deltas (Brent, WTI) of the spread call under bivariate GBM: derivative of exact_spread_call, point by point."""
+    # --- Part 1: same Gauss-Hermite points and weights as the price
+    z, w = roots_hermitenorm(n_points)
+    w = w / np.sqrt(2 * np.pi)
+
+    # --- Part 2: what does not depend on the scenario
+    sigma_star = sigma1 * np.sqrt(1 - rho**2)
+    discount = np.exp(-r * T)
+
+    delta1, delta2 = 0.0, 0.0
+    for zi, wi in zip(z, w):
+        # --- Part 3: the two scaling factors of the scenario
+        a = np.exp(-0.5 * rho**2 * sigma1**2 * T + rho * sigma1 * np.sqrt(T) * zi) # S1_star = S1_0 * a
+        b = np.exp((r - 0.5 * sigma2**2) * T + sigma2 * np.sqrt(T) * zi) # S2_T = S2_0 * b
+        S1_star = S1_0 * a
+        K_star = S2_0 * b + K
+
+        # --- Part 4: N(d1) and N(d2) of the conditional Black-Scholes
+        if K_star > 0:
+            d1 = (np.log(S1_star / K_star) + (r + sigma_star**2 / 2) * T) / (sigma_star * np.sqrt(T))
+            d2 = d1 - sigma_star * np.sqrt(T)
+            N1, N2 = norm.cdf(d1), norm.cdf(d2)
+        else:
+            N1, N2 = 1.0, 1.0 # K_star <= 0: always exercised
+
+        # --- Part 5: chain rule, then weighted average
+        delta1 += wi * a * N1 # dBS/dS = w_i * dS1_star/dS1_0 (= a) * N(d1)
+        delta2 += wi * (-discount * N2) * b # dBS/dK = -exp(-rT) *N(d2) * dK_star/dS2_0 (= b)
+    return delta1, delta2
+
 
 def margrabe_call(S1_0, S2_0, T, sigma1, sigma2, rho):
     """Margrabe price of the option to exchange asset 2 for asset 1 (spread call with K = 0)."""
