@@ -1,6 +1,6 @@
 import numpy as np
 
-from spread_options.analytics import bjerksund_stensland_call, bs_call, kirk_call, kirk_deltas, margrabe_call, margrabe_deltas
+from spread_options.analytics import bjerksund_stensland_call, bs_call, exact_spread_call, kirk_call, kirk_deltas, margrabe_call, margrabe_deltas
 from spread_options.monte_carlo import mc_call, mc_spread_call, mc_spread_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
@@ -77,3 +77,14 @@ def test_bjerksund_stensland_matches_mc_where_kirk_is_worst():
     #    catches: K with asset 2's probability (d3 = d2) -> 10.063, K not discounted -> 10.424,
     #    b**2 instead of b in the last term of d2 -> 11.611; Kirk itself (10.329, gap 0.045) would fail too
     assert abs(bjerksund_stensland_call(**spread) - price) < 3 * std_err
+
+
+def test_exact_spread_call_matches_mc():
+    # 1. fil rouge with a nonzero strike, so that a mistake on K is also caught
+    spread = dict(S1_0=80.0, S2_0=75.0, K=5.0, T=1.0, r=0.03, sigma1=0.3, sigma2=0.35, rho=0.6)
+    # 2. 1-D integral with 32 Gauss-Hermite points: 9.0456
+    exact = exact_spread_call(**spread)
+    # 3. independent check: plain MC on 1,000,000 scenarios, seed 23: 9.0226 +/- 0.0135
+    mc_price, std_err = mc_spread_call(**spread, n_paths=1_000_000)
+    # 4. gap 0.023 = 1.7 standard errors: same price, MC noise only
+    assert abs(exact - mc_price) < 3 * std_err

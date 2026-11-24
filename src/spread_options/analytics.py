@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.stats import norm
+from scipy.special import roots_hermitenorm
+
 
 def bs_call(S0, K, T, r, sigma):
     """Black-Scholes price of a European call option."""
@@ -12,6 +14,35 @@ def bs_delta(S0, K, T, r, sigma):
     """Black-Scholes delta of a European call: number of shares to hold."""
     d1 = (np.log(S0 / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
     return norm.cdf(d1) # delta = N(d1)
+
+def exact_spread_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho, n_points=32):
+    """Spread call under bivariate GBM: conditional Black-Scholes averaged over the WTI shock (Gauss-Hermite)."""
+    # --- Part 1: Gauss-Hermite points z_i and weights w_i for Z2 ~ N(0, 1)
+    z, w = roots_hermitenorm(n_points)
+    w = w / np.sqrt(2 * np.pi) # scipy weights sum to sqrt(2 pi): divide so they sum to 1
+
+    # --- Part 2: conditional vol of the Brent, the same in every scenario
+    sigma_star = sigma1 * np.sqrt(1 - rho**2)
+
+    price = 0.0
+    for zi, wi in zip(z, w):
+        # --- Part 3: WTI at maturity fixed by the shock zi -> conditional strike
+        S2_T = S2_0 * np.exp((r - 0.5 * sigma2**2) * T + sigma2 * np.sqrt(T) * zi)
+        K_star = S2_T + K
+
+        # --- Part 4: Brent spot to give Black-Scholes so that its mean at T is the conditional mean
+        S1_star = S1_0 * np.exp(-0.5 * rho**2 * sigma1**2 * T + rho * sigma1 * np.sqrt(T) * zi)
+
+        # --- Part 5: conditional call price
+        if K_star > 0:
+            c = bs_call(S1_star, K_star, T, r, sigma_star) # ordinary Black-Scholes
+        else:
+            c = S1_star - K_star * np.exp(-r * T) # K_star <= 0: always exercised, payoff is linear
+
+        # --- Part 6: weighted contribution
+        price += wi * c
+    return price
+
 
 def margrabe_call(S1_0, S2_0, T, sigma1, sigma2, rho):
     """Margrabe price of the option to exchange asset 2 for asset 1 (spread call with K = 0)."""
