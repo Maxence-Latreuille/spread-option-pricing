@@ -1,4 +1,4 @@
-from spread_options.analytics import bs_call, bs_delta, exact_spread_call, exact_spread_deltas, margrabe_call, margrabe_deltas
+from spread_options.analytics import bs_call, bs_delta, exact_spread_call, exact_spread_deltas, ldz_call, margrabe_call, margrabe_deltas
 
 PARAMS = dict(S0=100.0, K=100.0, T=1.0, r=0.03, sigma=0.2)
 
@@ -47,3 +47,12 @@ def test_exact_spread_deltas_are_slopes_of_exact_price():
     up2 = exact_spread_call(**{**spread, "S2_0": 75.0 + h})
     down2 = exact_spread_call(**{**spread, "S2_0": 75.0 - h})
     assert abs((up2 - down2) / (2 * h) - delta2) < 1e-6
+
+
+def test_ldz_matches_exact_spread_call_for_negative_strike():
+    # 1. fil rouge with K = -5: Kirk's worst kind of case (+1.6 cents); exact price from the 1-D integral
+    spread = dict(S1_0=80.0, S2_0=75.0, K=-5.0, T=1.0, r=0.03, sigma1=0.3, sigma2=0.35, rho=0.6)
+    exact = exact_spread_call(**spread, n_points=64)
+    # 2. K < 0 goes through the parity branch, which calls the K >= 0 formula with the assets swapped:
+    #    one case checks both parts (LDZ error -0.00003 $, far below 0.01 cent)
+    assert abs(ldz_call(**spread) - exact) < 1e-4

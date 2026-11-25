@@ -121,3 +121,40 @@ def bjerksund_stensland_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho):
     d3 = (L + (-sigma1**2 / 2 + b**2 * sigma2**2 / 2) * T) / den
     # receive asset 1, give back asset 2, pay K: each weighted by its own probability
     return S1_0 * norm.cdf(d1) - S2_0 * norm.cdf(d2) - K * np.exp(-r * T) * norm.cdf(d3)
+
+
+def ldz_integral(C, D, eps):
+    """Li-Deng-Zhou: average of N(C + D*y + eps*y^2) over y ~ N(0, 1), to second order in eps."""
+    v = 1 + D**2
+    z = C / np.sqrt(v)
+    J0 = norm.cdf(z) # eps = 0: average of N(straight line), exact
+    J1 = (1 + (1 + C**2) * D**2) / v**2.5 * norm.pdf(z) # first derivative in eps
+    J2 = ((6 - 6 * C**2) * D**2 + (21 - 2 * C**2 - C**4) * D**4 + 4 * (3 + C**2) * D**6 - 3) / v**5.5 * C * norm.pdf(z) # second
+    return J0 + J1 * eps + 0.5 * J2 * eps**2
+
+def ldz_call(S1_0, S2_0, K, T, r, sigma1, sigma2, rho):
+    """Li-Deng-Zhou (2008) spread call: exercise boundary replaced by a parabola around the median WTI."""
+    if K < 0: # the formula needs K >= 0: parity, then swap the two assets
+        return S1_0 - S2_0 - K * np.exp(-r * T) + ldz_call(S2_0, S1_0, -K, T, r, sigma2, sigma1, rho)
+
+    # --- Part 1: log prices at maturity, ln S_iT = mu_i + nu_i * shock
+    mu1 = np.log(S1_0) + (r - 0.5 * sigma1**2) * T
+    mu2 = np.log(S2_0) + (r - 0.5 * sigma2**2) * T
+    nu1, nu2 = sigma1 * np.sqrt(T), sigma2 * np.sqrt(T)
+    R = np.exp(mu2) # median WTI at maturity: the parabola is built around it
+    s = nu1 * np.sqrt(1 - rho**2) # conditional std of ln S1T once the WTI shock is known
+
+    # --- Part 2: parabola C3 + D3*y + eps*y^2 for A(y) (value, slope, curvature at y = 0)
+    C3 = (mu1 - np.log(R + K)) / s
+    D3 = (rho * nu1 - nu2 * R / (R + K)) / s
+    eps = -0.5 * nu2**2 * R * K / (R + K)**2 / s # zero when K = 0 -> Margrabe
+
+    # --- Part 3: same parabola shifted for the Brent term (y + rho*nu1) and the WTI term (y + nu2)
+    C1 = C3 + D3 * rho * nu1 + eps * rho**2 * nu1**2 + np.sqrt(1 - rho**2) * nu1
+    D1 = D3 + 2 * rho * nu1 * eps
+    C2 = C3 + D3 * nu2 + eps * nu2**2
+    D2 = D3 + 2 * nu2 * eps
+
+    # --- Part 4: receive the Brent, give the WTI, pay K, each with its own probability
+    I1, I2, I3 = ldz_integral(C1, D1, eps), ldz_integral(C2, D2, eps), ldz_integral(C3, D3, eps)
+    return S1_0 * I1 - S2_0 * I2 - K * np.exp(-r * T) * I3
